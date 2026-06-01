@@ -17,6 +17,28 @@ Confirmed facts discovered while probing/disassembling. Update as we learn.
 ## Notes
 (append observations here, newest first)
 
+### 2026-06-01 — Task 7: DRA live path recognized but renders black; MOD command found
+
+- **DRA header MUST be its own 512-byte report** (not concatenated with data). With that fix,
+  the device REACTS to DRA (backlight off/on cycle) — i.e. the `CRT\0\0DRA` command is now
+  recognized. Before (concatenated) there was no reaction.
+- DRA full-frame attempts ALL render black: JPEG, raw RGB565-LE — both 1920×462, flag 0,
+  rect (0,0,1920,462), with HANC handshake. Backlight cycles, screen stays black.
+- **`addModeChangedCommand` = `CRT\0\0MOD\0\0<modeByte>`** (opcode MOD, mode byte at offset 10,
+  RVA 0x19b80). Tried `MOD 1` before DRA → still black (backlight cycle only).
+- DRA header layout (confirmed from getSecondaryScreenPicInfo / sendSecondaryScreenPicInfo):
+  `[0..7]"CRT\0\0DRA" [8..11]BE32(dataLen+0x20) [12..13]BE16(flag) [14..21]BE16 x,y,w,h [22..31]pad`.
+  The +0x20 = the 32-byte header is counted in the total length.
+- PATTERN: every content path (LOG/DRA/BAT × jpeg/raw565/raw888 × white/colors × ±handshake
+  ±mode) is ACCEPTED/reacts but renders BLACK. Strong sign of a missing enabling element not
+  determinable by static analysis: candidates = exact MOD value, a separate present/refresh
+  command, the **2nd HID usage (usage=2) as the pixel data pipe**, or a required HANC payload
+  (the 15-char QString arg seen in addHandshakePack).
+- Probes added: probe-dra (format/flag/rotate/solid/mode args).
+- RECOMMENDATION: Approach C (USB capture of the official Windows app pushing one frame) would
+  resolve the remaining unknowns definitively. Alternatively continue brute-forcing MOD values
+  / usage-2 data pipe.
+
 ### 2026-06-01 — Task 7: LOG = boot logo (persistent); live path = "DRA" (secondary screen)
 
 - **Solid WHITE via LOG → still black live.** White is white in any RGB format, so the
