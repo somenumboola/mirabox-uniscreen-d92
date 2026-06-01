@@ -17,6 +17,20 @@ Confirmed facts discovered while probing/disassembling. Update as we learn.
 ## Notes
 (append observations here, newest first)
 
+### 2026-06-01 — Task 6: Resolution (static analysis inconclusive → empirical)
+
+- Resolution is **not hardcoded** in `SDLibrary1.dll`. Disassembly of `getLogoSizeCommand`
+  (RVA 0x146f40) shows it builds the ASCII command `CRT` + `LOG` and takes the image
+  **size as a parameter** (`int, uchar`); `sendPicSizeCommand` (RVA 0x23f50) builds
+  `CRT` + `BAT`, also size-parameterized. Dimensions come from the app layer.
+- The app ("Craft" DownLoadTool) fetches device packs from `https://cdn1.key123.vip/Craft/release/`.
+  `app-version-check-Windows.json` is **AES-encrypted** (matches `QtAESHandler`/`aes_secret_key_`
+  in the DLL). Guessed device-list URLs 404. Static path abandoned.
+- Image opcodes confirmed for D92 family: **`CRT BAT`** (pic, size+index) and **`CRT LOG`** (logo, size+flag).
+- DECISION: determine resolution empirically via the image-upload probe (Task 7) by
+  sweeping candidate resolutions and observing which renders 1:1. Image base for the DLL
+  in objdump is `0x180000000` (note: 7z reported 0x140000000; use 0x180000000 for VA math).
+
 ### 2026-06-01 — Task 6: Screen resolution (CONFIRMED by manufacturer)
 
 **Resolution: 1920 × 462 pixels** — confirmed by manufacturer specification.
