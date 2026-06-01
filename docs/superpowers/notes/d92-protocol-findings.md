@@ -17,6 +17,32 @@ Confirmed facts discovered while probing/disassembling. Update as we learn.
 ## Notes
 (append observations here, newest first)
 
+### 2026-06-01 — TRANSPORT SOLVED: interrupt-OUT endpoint, 1024-byte alignment
+
+The Windows-vs-Mac hypothesis was correct. Tests via **libusb** (the `usb` pkg, sudo):
+- Endpoints: **interrupt OUT = 0x01**, interrupt IN = 0x82. Sending frames down the
+  interrupt-OUT endpoint produces a STRONG device reaction, where node-hid (macOS hidapi,
+  which routes output reports via the CONTROL endpoint / SET_REPORT) produced nothing for
+  the same large frames. **macOS hidapi was silently dropping the bulk frames.**
+- **512-byte transfers → reboot LOOP** (firmware crash, misaligned). **1024-byte transfers
+  (= the OUTPUT report size) → clean delivery, no crash.** Report-size alignment is critical.
+- With 1024-byte transfers, the DRA frame (header+data, +/- ULEND/STP) is delivered WITHOUT
+  crashing; screen stays BLACK during a 15s connection hold. The single "reboot" seen is the
+  libusb interface RELEASE on exit (macOS resets the HID device on claim/release) — NOT the
+  frame.
+- DRA framing: 32-byte header CONCATENATED with data as one continuous stream, chunked at
+  1024 (size field already = dataLen+32).
+- CONNECT handshake over interrupt-OUT causes a single device reboot (re-init); fine on its own.
+
+REMAINING: frame is delivered cleanly but not PRESENTED (black). Need the activation/present
+step (likely: CONNECT → device re-inits → reopen handle → stream frames in correct mode,
+possibly MOD), which is stateful and fragile under macOS libusb (claim/release resets device).
+Implication for a real driver: may need to NOT release (keep the handle) and handle the
+CONNECT re-init, OR find a way to use interrupt-OUT without libusb's resetting claim.
+A USB capture would reveal the exact connect→present sequence the app uses.
+
+Probes: probe-libusb (PATH=DRA|LOG|NONE, format, pkt, args: noconnect/noulend/nostp; env HOLD).
+
 ### 2026-06-01 — Real handshake is CONNECT (not HANC); live render still gated
 
 - `addHandshakePack` has TWO branches (gated by isOld293Version). Branch A = `HANC` (old 293).
