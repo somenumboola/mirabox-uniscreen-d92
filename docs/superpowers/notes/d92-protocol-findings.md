@@ -17,6 +17,31 @@ Confirmed facts discovered while probing/disassembling. Update as we learn.
 ## Notes
 (append observations here, newest first)
 
+### 2026-06-01 — Control channel works: firmware "V25.D92.02.012"; present still gated
+
+- **Control endpoint GET_REPORT works**: `controlTransfer(0xa1, 0x01, 0x0100, 0, 512)`
+  returns **"V25.D92.02.012"** (15 bytes — matches the `movl $0xf`/15 in addHandshakePack,
+  and confirms model **D92**, hw 02, fw v012). Same string for Input report id 0/1 and Feature.
+  This is the device's reply channel the connect routine uses (send VER over interrupt-OUT,
+  read firmware over control, retry).
+- Full activation attempts (CONNECT + VER + control firmware-read loop + DRA frame, 1024,
+  held) → device reboots (1-2x), screen stays BLACK. `noconnect` + frame alone is stable
+  (black, reboot only on libusb release); adding CONNECT or the control read introduces
+  reboots. Device behavior under probing is now state-dependent/unstable.
+- CONCLUSION: present/activation is a stateful sequence we cannot reliably replicate blind.
+  We now have ALL the pieces a capture-reader needs: transport (interrupt-OUT 0x01 @ 1024),
+  control firmware read, full opcode vocabulary, CONNECT handshake, resolution 1920x462,
+  JPEG/raw formats, DRA/LOG/BAT framing. A short USB capture of the official app's connect +
+  one frame would reveal the exact order/timing/present-trigger and finish this.
+
+### SESSION SUMMARY — what's solved vs pending
+SOLVED: device id/enumeration; HID report descriptor (IN 512 / OUT 1024); transport is
+interrupt-OUT endpoint 0x01 at 1024-byte alignment (macOS hidapi was dropping bulk frames via
+control endpoint — the Windows/Mac difference); full command vocabulary
+(DIS/LIG/CLE/STP!#/ULEND/BAT/LOG/DRA/MOD/VER/CONNECT); brightness control; CONNECT handshake;
+control GET_REPORT firmware read; resolution 1920x462; image format JPEG (+raw paths).
+PENDING (needs USB capture): the connect→present sequence that makes a frame appear on screen.
+
 ### 2026-06-01 — TRANSPORT SOLVED: interrupt-OUT endpoint, 1024-byte alignment
 
 The Windows-vs-Mac hypothesis was correct. Tests via **libusb** (the `usb` pkg, sudo):
