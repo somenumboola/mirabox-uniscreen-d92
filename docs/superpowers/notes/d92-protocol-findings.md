@@ -17,6 +17,25 @@ Confirmed facts discovered while probing/disassembling. Update as we learn.
 ## Notes
 (append observations here, newest first)
 
+### 2026-06-01 — Task 7: LOG = boot logo (persistent); live path = "DRA" (secondary screen)
+
+- **Solid WHITE via LOG → still black live.** White is white in any RGB format, so the
+  black is NOT a pixel-format issue: **`LOG` does not render to the live display.**
+- **Power-cycle test:** after our LOG uploads, the device now BOOTS to black (no MiraBox
+  logo) — i.e. `LOG` **overwrote the persistent boot/background image** in flash. So
+  `LOG` = boot logo / stored full-screen image (shown at power-on), ACK'd but not live.
+  (The last LOG write — solid white — should appear as the boot screen next power-on.)
+- **Live-display command found:** `getSecondaryScreenPicInfo` (RVA 0x1e2f0) builds a packet
+  with opcode `CRT` + **`DRA`** ("draw") followed by integer params; `sendSecondaryScreenPicInfo`
+  signature is `(int size, byte flag, int x, int y, int w, int h)` — a **region blit**. This
+  is the live telemetry-screen update path, not LOG.
+- UNKNOWNS to finish the live path: coordinate int width/endianness, pixel format for the
+  region data (JPEG vs raw 565/888), data framing, and whether `addModeChangedCommand`
+  (RVA 0x19b80) must switch the device into live mode first.
+- DECISION POINT: either (a) keep disassembling `sendSecondaryScreenPicInfo` to reconstruct
+  the exact DRA byte layout, or (b) capture the official Windows app pushing one frame
+  (Approach C) to read the live sequence definitively.
+
 ### 2026-06-01 — Task 7: Image upload at 1920×462 — device ACKs LOG, but screen black
 
 Resolution 1920×462 (manufacturer). Findings from live probing:
