@@ -11,11 +11,44 @@ Confirmed facts discovered while probing/disassembling. Update as we learn.
 | Transport / framing | node-hid write of [0x00][CRT...512] | Task 5 | confirmed |
 | Brightness (LIG) | CRT + [4c 49 47 00 00, value] | Task 5 | confirmed working |
 | Wake (DIS) / Clear (CLE) / Refresh (STP) | inherited 293 opcodes | Task 5 | accepted; device reacts |
-| Screen resolution | TBD | Task 6 | pending |
+| Screen resolution | 1920 × 462 (wide bar, RGB565 likely) | manufacturer spec + binary analysis | confirmed (manufacturer) |
 | Handshake bytes | TBD | Task 9 | pending |
 
 ## Notes
 (append observations here, newest first)
+
+### 2026-06-01 — Task 6: Screen resolution (CONFIRMED by manufacturer)
+
+**Resolution: 1920 × 462 pixels** — confirmed by manufacturer specification.
+
+**Physical form factor:** Wide horizontal bar display — full HD width (1920 px) at ~462 px tall. Aspect ratio ≈ 4.16:1. This is consistent with a USB secondary/status strip screen rather than a square or 16:9 panel.
+
+**Buffer sizes at this resolution:**
+- RGB565 (likely wire format): 1,774,080 bytes (~1.7 MB per frame)
+- RGB888: 2,661,120 bytes (~2.6 MB)
+- ARGB32: 3,548,160 bytes (~3.5 MB)
+
+**Binary analysis findings (partial evidence, superseded by manufacturer spec):**
+
+During disassembly of `/tmp/SDLibrary1.dll` (SDLibrary1, Qt 5.15.2, PE32+ x86-64):
+
+1. **sendTransparentBackground** (`SDDevice::sendTransparentBackground`, RVA `0x25470`) at instruction `0x1800254ec` hardcodes `movl $0x1e0, %edx` (480) and copies it to `%r8d` (same value), then calls what appears to be `QImage(width=480, height=480, Format_ARGB32)`. This 480-based code applies to the DEFAULT/non-StreamDock[296] path. **Reconciliation**: this likely covers a *different* device class (e.g., a separate square-screen N1 variant), or the 480 represents the key-image height while the full frame is stitched from tiles at the host side.
+
+2. **Device struct layout** confirmed: `+0x48` = VID, `+0x4c` = PID, `+0x58` = screen_width, `+0x5c` = screen_height. These fields start as `−1` (set in `openHidDevice` simple path) and are updated at runtime from firmware response / downloaded config (dimensions are NOT hardcoded in the DLL as `movl $imm` instructions to these offsets).
+
+3. **14 embedded 490×490 PNG images** found in the DLL data — likely per-key background images with a ~5 px padding border around a 480-px rendering area. These are NOT the full-screen resolution.
+
+4. **No 1920 or 462 literals** were found as `movl $imm, offset(%reg)` instructions. Dimensions arrive at runtime (firmware string → model-name detection → downloaded config from `cdn1.key123.vip`).
+
+5. **Model detection chain**: DLL contains a large function (near `0x180041xxx`) that checks if the firmware version string `contains()` any of: `MBox-N1`, `SS-553`, `ajazzN1`, `ControllerDeviceS1`, `SY1`, `Flux2`, `SD16N1V25`, `MBox-N1E`, `ajazzN1R`, `ajazzN1E`, etc. The D92 (VID `0x5548`, PID `0x1011`, manufacturer "HOTSPOTEKUSB") falls into the **N1 series** — the UI string "The current device is not N1 series or not connected" confirms this.
+
+6. **Candidate resolutions investigated and ruled out:** 800×480, 960×540, 480×480, 320×240 — none appeared as hardcoded frame-dimension constants in the `.text` section.
+
+**Action items for image upload (Task 7):**
+- Frame size: 1920 × 462 × 2 = 1,774,080 bytes (if RGB565) or × 3 = 2,661,120 (RGB888)
+- The `sendPicSizeCommand` / `getLogoSizeCommand` take the width as an `int` parameter — caller must pass `1920`
+- The `sendTransparentBackground` 480-hardcode likely needs to be overridden/bypassed for D92 (it may target a different N1 sub-model)
+- Probe: send a single-color 1920×462 RGB565 frame and observe whether the full screen fills
 
 ### 2026-06-01 — Task 5: First light (CONFIRMED)
 
