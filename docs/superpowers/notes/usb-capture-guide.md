@@ -13,6 +13,32 @@ only needs to reveal the *order/timing* and the *present trigger*.
 - Screen 1920×462; images JPEG (and raw on LOG). `DRA` header = `CRT\0\0DRA` + BE32(len+32)
   + BE16(flag,x,y,w,h).
 
+## Option A0 — Windows in UTM on this Mac (Apple Silicon) — preferred if it works
+
+This Mac is Apple Silicon (Apple `T8132` USB controller), so the UTM guest is **Windows 11
+ARM** and MiraBox Craft (x64) runs under Windows' x64 emulation. Steps:
+
+1. **Use the QEMU backend.** USB device passthrough is reliable on UTM's **"Emulate"**
+   (QEMU) backend, not Apple Virtualization. If you built the VM as "Virtualize", make a
+   QEMU one (or confirm USB passthrough is available — if the running VM has no USB
+   connect menu, it's the wrong backend).
+2. **Add a USB controller / share the device.** VM Settings → there should be a USB section
+   (USB 2.0/3.0). Start the VM, then use the **USB toolbar icon / menu → connect
+   `HOTSPOTEKUSB HID DEMO`** (VID 5548 / PID 1011) into the guest.
+   - macOS will *lose* the device while it's passed through (our Mac node scripts won't see
+     it — expected). To hand it back, disconnect it from the same USB menu.
+   - If it won't attach (HID devices can be held by the macOS host), try toggling it off/on
+     in the USB menu, or replug while the VM is focused.
+3. In the guest, install **MiraBox Craft** and **Wireshark** (includes USBPcap).
+4. Confirm the app **connects to the D92 and displays an image** in the guest. If the image
+   shows in the VM, the capture will be valid. (If the x64-emulated app can't connect or is
+   too flaky, fall back to a physical Windows PC — Option A.)
+5. Capture inside the guest per Option A (steps 2–5 below) — USBPcap records the guest's USB
+   stack regardless of how the device was passed in.
+
+**Reality check:** passthrough + x64 emulation + capture in one VM has several moving parts.
+If anything stalls, a physical Windows machine (Option A) is the dependable fallback.
+
 ## Option A — Windows + Wireshark + USBPcap (recommended)
 1. On the Windows PC with MiraBox Craft installed, install **Wireshark** (bundles **USBPcap**).
 2. Plug in the D92. Open Wireshark → start capture on the **USBPcap** interface that shows the
