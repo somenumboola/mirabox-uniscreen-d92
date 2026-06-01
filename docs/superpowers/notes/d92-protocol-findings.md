@@ -17,6 +17,31 @@ Confirmed facts discovered while probing/disassembling. Update as we learn.
 ## Notes
 (append observations here, newest first)
 
+### 2026-06-01 — Task 7: HID report descriptor decoded — OUTPUT report is 1024 bytes
+
+Report descriptor (from ioreg) for VID 0x5548/PID 0x1011:
+`06 a0 ff 09 01 a1 01 09 02 a1 00 06 a1 ff 09 03 09 04 15 80 25 7f 35 00 45 ff 75 08 96 00 02 81 02 09 05 09 06 15 80 25 7f 35 00 45 ff 75 08 96 00 04 91 02 c0 c0`
+
+Decoded:
+- Usage Page 0xFFA0; Collection(App, usage 0x01) > Collection(Physical, usage 0x02).
+- INPUT:  Report Size 8 × Count 0x0200 = **512 bytes**, report ID 0 (unnumbered).
+- OUTPUT: Report Size 8 × Count 0x0400 = **1024 bytes**, report ID 0. (`MaxOutputReportSize=1024`.)
+- So the "two usages" are nested App/Physical collections (ONE pipe), not two data channels.
+- **The OUTPUT report is 1024 bytes, not 512.** Switched probe to 1024-byte reports.
+
+Retested DRA raw-RGB565 with 1024-byte reports → device reacts (backlight cycle) but STILL BLACK.
+
+### Status summary after extensive Approach-A/B probing
+CONFIRMED WORKING: enumerate/open (no sudo), report id 0x00, brightness (LIG), wake (DIS),
+handshake (HANC, causes display reset), clear (CLE), LOG=persistent boot image (ACK'd),
+resolution 1920×462, OUTPUT report 1024B, full opcode set (DIS/LIG/CLE/STP!#/ULEND/BAT/LOG/
+DRA/MOD/HANC), DRA header layout, MOD command.
+UNRESOLVED: the live on-screen render. EVERY content path (LOG/BAT/DRA × jpeg/raw565/raw888 ×
+white/colors × ±handshake ±MOD × 512/1024 reports) is accepted/reacts but renders BLACK.
+The missing enabling element is not determinable by static analysis + blind iteration.
+RECOMMENDATION: Approach C — capture the official Windows app pushing one frame — to read the
+exact live sequence (mode value, flag, coord encoding, data format, any present/refresh step).
+
 ### 2026-06-01 — Task 7: DRA live path recognized but renders black; MOD command found
 
 - **DRA header MUST be its own 512-byte report** (not concatenated with data). With that fix,
