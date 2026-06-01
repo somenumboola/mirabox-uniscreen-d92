@@ -35,6 +35,21 @@ IAP_Programmer.exe / aicupg, DFU/BurnTool.exe) and its update logs.
   to force Boot-ROM USB mode (`33C3:6677`) directly, then run the tool.
 - Or contact **MiraBox support** for the exact D92 recovery trigger and stock firmware.
 
+## Diagnosis update (2026-06-01) — device is alive, not hard-bricked
+
+- Board: **D92-VIP3-V25-20251202**; firmware (read live): **V25.D92.02.012**; SoC ArtInChip.
+- On **macOS the device is STABLE** and firmware-readable (control GET_REPORT returns
+  `V25.D92.02.012` every time, same USB path, no blinking). So the app firmware boots and runs.
+- It **only ever enumerates as `5548:1011`**, never the Boot-ROM `33c3:6677` — the bootloader is
+  intact and keeps launching the (display-corrupt) app firmware, so there is **no software
+  window into Boot-ROM recovery**. Forcing Boot-ROM mode needs a **hardware boot pad** at
+  power-on (one of the `NC` test pads near the SoC) or the vendor's recovery step.
+- The **connect/disconnect loop is induced by the Windows firmware tool actively poking the
+  device**; left alone (macOS) it is stable. Damage is effectively limited to the boot
+  logo / display state.
+- ACTION: contact MiraBox support for the hardware recovery trigger + recovery firmware (draft
+  in `mirabox-support-message.md`). Do NOT poke the device further meanwhile — it's stable.
+
 ## Root cause (for our own notes)
 The blink loop was almost certainly caused by our `LOG`-path writes corrupting the persistent
 boot image in flash during reverse-engineering. The `LOG` opcode writes the stored boot/background
