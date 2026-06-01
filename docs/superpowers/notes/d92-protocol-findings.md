@@ -17,6 +17,34 @@ Confirmed facts discovered while probing/disassembling. Update as we learn.
 ## Notes
 (append observations here, newest first)
 
+### 2026-06-01 — Installed app analysis (/Volumes/Home/MIRA/MiraBoxCraft)
+
+Strong confirmations from the installed "MiraBox Craft" app (with user's screen config):
+- **Resolution 1920×462 CONFIRMED**: `CoreConfiguration/logoCrossD92.jpg` = 1920×462,
+  `logoVerticalD92.jpg` = 462×1920 (the two orientations). These are the real boot-logo JPEGs.
+- **Image format is JPEG**: boot logos are JPEG; DLL handshake region references "JPG".
+- `com.donggua.streamdock.virtualDisplay.mPanelPlugin` (ActionGeometry 1920×462, runs
+  `virtualDisplay.exe`) = the secondary-screen telemetry plugin. Architecture: plugins →
+  websocket SDK (ws://localhost:33579) + HWInfoSever.exe → SDLibrary → USB. Plugin/app logs
+  are app-level only (no USB byte dumps).
+- `addHandshakePack` appends `"HANC"` + a model/identifier string (e.g. `"StreamDock[296]"`).
+  We have only ever sent bare `HANC` (4 bytes).
+
+### Live-display BLOCKED — needs ground truth
+Sent the REAL `logoCrossD92.jpg` (JPEG, 100399 B) via LOG (jpegLen size, 1024B reports):
+ACK/OK, but live screen black AND boot screen black after power-cycle. So even the genuine
+vendor JPEG via LOG does not render.
+
+CONCLUSION: Across ~25 attempts, EVERY content path (LOG/BAT/DRA × raw565/raw888/real-JPEG ×
+white/colors × ±HANC ±MOD × 512/1024B reports) is accepted (ACK / backlight reaction) but
+renders BLACK. The missing element is not statically derivable. Most likely candidates:
+  1. a CHECKSUM/CRC on image data (device silently drops invalid frames),
+  2. HANDSHAKE AUTH payload ("StreamDock[<model>]" string) gating host display,
+  3. a data TRANSFORM (tiling / scan order) expected by the panel controller.
+DEFINITIVE next step: USB capture of the official app pushing one frame (Approach C) — the
+ws SDK + SDLibrary route the bytes, and only a bus capture reveals the exact framing/checksum.
+Probes added: probe-descriptor, probe-bootlogo.
+
 ### 2026-06-01 — Task 7: HID report descriptor decoded — OUTPUT report is 1024 bytes
 
 Report descriptor (from ioreg) for VID 0x5548/PID 0x1011:
