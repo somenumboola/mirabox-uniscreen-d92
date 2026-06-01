@@ -17,6 +17,29 @@ Confirmed facts discovered while probing/disassembling. Update as we learn.
 ## Notes
 (append observations here, newest first)
 
+### 2026-06-01 — Checksum hunt (none found) + activation-handshake lead
+
+Per user request, hunted for a data checksum/CRC in the send path:
+- `getSecondaryScreenPicInfo` (header builder): no checksum, just CRT\0\0DRA + size + coords.
+- `appendData@SDGeneralDevice` (0x2b100): Qt list/refcount plumbing only, no checksum.
+- `writeDataToHidDevice` (0x26ad0): no checksum loop. BUT it calls
+  **`sendGetHardwareFirmwareVersion`** and runs retry/timeout loops (delays 0x64=100ms,
+  0x1f4=500ms, limit 0xbb8=3000ms, retry count 3). So the official connect routine does a
+  **firmware-version handshake exchange** to activate the device before display.
+
+User hypothesis tested (image shown but invisible/transparent/zero-brightness):
+- DRA flag byte 0 vs 255 (opacity?) → no difference, still black.
+- Re-asserting brightness after the draw → no difference.
+- `addAdjustBrightnessPack` opcode confirmed = `CRT\0\0LIG` + value@10 + bool@11; brightness
+  is screen brightness and visibly works, so not a brightness-zero issue.
+- Library distinguishes `ScreenBrightness` vs `LightBrightness` (noted; LIG = screen).
+
+SYNTHESIS: the remaining gap is most likely the **activation/connection handshake** (the
+firmware-version exchange + timing/retries in writeDataToHidDevice, and/or the
+`"StreamDock[<model>]"` payload in addHandshakePack) that puts the device into the mode where
+uploaded frames are presented. This is sequence/timing/auth state that is impractical to
+brute-force blind. A USB capture of the official app's connect+first-frame would resolve it.
+
 ### 2026-06-01 — Installed app analysis (/Volumes/Home/MIRA/MiraBoxCraft)
 
 Strong confirmations from the installed "MiraBox Craft" app (with user's screen config):
