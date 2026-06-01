@@ -17,6 +17,25 @@ Confirmed facts discovered while probing/disassembling. Update as we learn.
 ## Notes
 (append observations here, newest first)
 
+### 2026-06-01 — Real handshake is CONNECT (not HANC); live render still gated
+
+- `addHandshakePack` has TWO branches (gated by isOld293Version). Branch A = `HANC` (old 293).
+  **Branch B (non-293, = D92) = `CRT\0\0CONNECT`** (opcode "CONNECT"). We had been sending the
+  293 handshake the whole time.
+- `CONNECT` reacts DIFFERENTLY from `HANC` (double backlight cycle vs single) — so it is
+  recognized and distinct. But `CONNECT` + DRA (rgb565, solid red) AND `CONNECT` + LOG
+  (rgb565, solid red), correct 1920x462 + 1024B reports, STILL render BLACK.
+- CONCLUSION (high confidence): activation is a **stateful request–response exchange**. The
+  connect routine (`writeDataToHidDevice`) queries firmware and loops with retries WAITING
+  FOR DEVICE REPLIES; the device only enters host-display mode after the host reads and
+  reacts to those replies. We cannot observe/replicate this challenge-response blind — the
+  device returns nothing to our isolated commands.
+- This is the definitive limit of static RE + blind probing. The only efficient finish is a
+  USB capture of the official app's connect + first-frame (Approach C), which reveals the
+  exact exchange (order, timing, the device's replies) and frame framing. We already have the
+  full command vocabulary (CONNECT/VER/MOD/DRA/LOG/BAT/ULEND/STP!#/LIG/DIS/CLE), so a capture
+  should make it all click.
+
 ### 2026-06-01 — Checksum hunt (none found) + activation-handshake lead
 
 Per user request, hunted for a data checksum/CRC in the send path:
