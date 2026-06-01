@@ -6,12 +6,20 @@
 
 ## Goal
 
-Build a minimal macOS driver/library that can drive a **MiraBox D92** USB telemetry
+Build a macOS driver/library that can drive a **MiraBox D92** USB telemetry
 screen: open it, handshake, set brightness, wake/clear, and display an arbitrary
 image at the screen's native resolution. Secondary goal: get the existing edited
 repo (`src/`, with the D92 VID/PID) actually working against the device. Stretch
 goal: gather macOS system telemetry (CPU/GPU/RAM) and render it to the screen like
 the official Windows app.
+
+**API breadth requirement:** expose in the Node library **as many D92 functions as
+can be reverse-engineered** from `SDLibrary1.dll` — not just the minimal set. Every
+`SDDevice` capability that applies to a screen device (lifecycle, info getters,
+brightness, sleep/wake, clear, image upload, rotation/direction, secondary-screen,
+heartbeat, firmware) should get a typed wrapper where we can confirm its bytes.
+Capabilities confirmed to be for other devices in the family (keyboard/lamp/MRGB)
+are documented but only implemented if they apply to the D92.
 
 The official software is **Windows-only** (Qt5 app, internally `DownLoadTool`,
 "MiraBox Craft" / "Mirabox Space", version 2025.07.09). This project reverse-engineers
@@ -54,6 +62,55 @@ Key structure:
 - **Image format: JPEG** (app accepts jpg/jpeg/png; device receives JPEG). 512-byte
   packet model.
 
+### Full `SDDevice` API surface (RE targets, from the DLL)
+
+The complete public method set of `SDDevice` (to be wrapped where applicable to the
+D92). Grouped by purpose:
+
+- **Lifecycle / transport:** `openHidDevice`, `closeHidDevice`, `closeHidDeviceOnError`,
+  `isHidDeviceOpen`, `findDevice`, `getAllConnectedDevices`, `startHidReadThread`,
+  `stopHidReadThread`, `startHidWriteThread`, `stopHidWriteThread`,
+  `readDataFromHidDevice`, `writeDataToHidDevice`, `writeData`.
+- **Info getters:** `getFirmwareVersion`, `getHardwareFirmwareVersion`,
+  `getReleaseNumber`, `getManufacturerString`, `getProductString`, `getSerialNumber`,
+  `getVid`, `getPid`, `getUsage`, `getUsagePage`, `getInterfaceNumber`,
+  `getReportDescriptor`, `getMaxPacket`, `getCurrentBrightness`, `getScreenOffTime`,
+  `getHidFeatureReport`, `getHidInputReport`, `getCurrentDeviceUUID`,
+  `isDeviceSleeping`, `isOld293Version`, `isUnsupportedDevice`, `lastError`.
+- **Brightness:** `sendAdjustBrightnessPack` / `addAdjustBrightnessPack`,
+  `increaseBrightness`, `decreaseBrightness`, `setDefaultBrightness`,
+  `setSupportAdjustBrightness`.
+- **Sleep / wake / screen-off:** `sendWakeUpScreenPack` / `addWakeUpScreenPack`,
+  `sendScreenOffPack` / `addScreenOffPack`, `setScreenOffTime`, `setScreenOffAction`,
+  `resetScreenOffTimer`, `stopScreenOffTimer`.
+- **Clear / refresh:** `sendClearAllCommand` / `addClearAllCommand` / `getClearAllCommand`,
+  `sendClearCommand` / `addClearCommand` / `getClearCommand`.
+- **Image / logo upload:** `appendSendData(ImageStruct)`, `prependSendData`,
+  `sendLogoSizeCommand`, `sendPicSizeCommand`, `getUploadFinishedCommand`,
+  `getFinishCommand` / `addFinishCommand`, `cancelUpload`, `currentDataSize`,
+  `setMaxDataSize`, `sendTransparentBackground`, `sendGIFToJPGInfo`,
+  `setSupportDisplayLogoAfterUpload`, `getSecondaryScreenPicInfo` /
+  `sendSecondaryScreenPicInfo`.
+- **Orientation:** `sendChangeDirectionCommand`.
+- **Handshake / heartbeat / session:** `sendHandshakePack` / `addHandshakePack`,
+  `sendHeartbeatPack` / `addHeartbeatPack`, `setHeartbeatEnable`, `isHeartbeatEnable`,
+  `sendDisconnectCommand`, `sendSettingsPackHead`, `insertSettings`,
+  `sendGetHardwareFirmwareVersion`, `sendGetHardwareFirmwareVersion`,
+  `setSoftwareUUID`, `setCurrentDeviceUUID`.
+- **Misc / vendor:** `sendQUCMDCommand` / `addQUCMDCommand` / `getQUCMDCommand`,
+  `addModeChangedCommand`.
+- **Static helpers:** `DeviceInformaition(int,int,QString)` (device registry →
+  resolution/keys), `getAllConnectedDevices`, `findDevice(vid,pid)`,
+  `deviceInstanceIdToPIDVID`.
+- **Likely NOT for D92 (other devices in family; document, implement only if applicable):**
+  `addKeyboardDownCommand`, `addKeyboardUpCommand`, `addLampControlCommand`,
+  `setIsLampControlDevice`, MRGB signals.
+- **Qt signals (`sig*`)** indicate async events worth surfacing as Node events:
+  `sigSuccessfullyConnectedToHidDevice`, `sigClosedHidDeviceConnection`,
+  `sigReadData`, `sigRefreshDisplay`, `sigLogoUploaded`, `sigLogoUploadError`,
+  `sigUpdateLogoUploadProgress`, `sigOnDeviceWakeUp`, `sigTurnOffTheScreen`,
+  `sigUpdateFirmwareVersionDisplay`, `sigExceededLogoSizeLimit`, etc.
+
 ### Reference: the existing 293 CRT protocol (`src/streamdock.ts`)
 
 - `CMD_PREFIX = [0x43,0x52,0x54,0x00,0x00]` (`CRT\0\0`)
@@ -83,10 +140,18 @@ library's `SDGeneralDevice` path. Benefits: native macOS support; typically no `
 - `src/hid-backend.ts` — open device by VID/PID `0x5548`/`0x1011`; `write()` output
   reports (handling the leading report-ID byte); `read()` 512-byte input reports.
   One clear job: move bytes to/from the HID device.
-- `src/d92.ts` — `D92` device class: `handshake()`, `wakeScreen()`, `setBrightness()`,
-  `clearScreen()`, `refresh()`/`finish()`, `setImage(image)` (resize → JPEG at native
-  resolution), `heartbeat()`. Modeled on `SDDevice`'s command builders and the
-  existing `streamdock.ts`. Depends only on the HID backend interface + Jimp.
+- `src/d92.ts` — `D92` device class exposing the **full reverse-engineered API surface**
+  (see "Full SDDevice API surface" above): lifecycle (`open`/`close`/`isOpen`),
+  info getters (firmware, serial, brightness, vid/pid/usage, report descriptor),
+  brightness (`setBrightness`/`increaseBrightness`/`decreaseBrightness`/`setDefaultBrightness`),
+  sleep/wake (`wakeScreen`/`screenOff`/`setScreenOffTime`), clear
+  (`clearScreen`/`clearKey?`), image upload (`setImage`/`cancelUpload`/`setLogoSize`),
+  orientation (`setDirection`), session (`handshake`/`heartbeat`/`disconnect`), and
+  async events (extends `EventEmitter` — `connected`, `disconnected`, `data`,
+  `logoUploaded`, `uploadProgress`, etc.). Each wrapper is implemented only once its
+  bytes are confirmed (probing or disassembly); unconfirmed ones are stubbed/marked.
+  Modeled on `SDDevice`'s command builders and the existing `streamdock.ts`. Depends
+  only on the HID backend interface + Jimp.
 - `src/streamdock.ts` — kept unchanged as reference.
 - `src/index.ts` — demo wiring: enumerate, open, handshake, wake, brightness, clear,
   push a test image. Replaces the libusb setup.
