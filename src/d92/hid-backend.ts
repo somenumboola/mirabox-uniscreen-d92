@@ -76,6 +76,12 @@ export class HidBackend extends EventEmitter {
     return Buffer.from(data.slice(0, size));
   }
 
+  /** Read a HID feature report (control GET_REPORT). Returns bytes incl. the report-id prefix. */
+  getFeatureReport(reportId: number, length: number): Buffer {
+    if (!this.dev) throw new Error("device not open");
+    return Buffer.from(this.dev.getFeatureReport(reportId, length));
+  }
+
   close(): void {
     this.dev?.close();
     this.dev = undefined;
