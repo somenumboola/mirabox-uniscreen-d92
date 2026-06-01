@@ -17,6 +17,49 @@ Confirmed facts discovered while probing/disassembling. Update as we learn.
 ## Notes
 (append observations here, newest first)
 
+### 2026-06-01 — Task 7: Image upload at 1920×462 — device ACKs LOG, but screen black
+
+Resolution 1920×462 (manufacturer). Findings from live probing:
+- **`LOG` full-screen upload returns `"ACK\0\0OK"`** (hex `41434b00004f4b00...`) from the
+  device — it ACCEPTS the LOG upload. Tested raw **BGR888** (2,661,120 B) and **RGB565-LE**
+  (1,774,080 B); both ACK. Screen: backlight lights "as if about to show," then stays BLACK.
+- **`BAT`+JPEG** upload at 1920×462 returns **no ACK**; screen stays black/logo.
+- Sequence used: wake → HANC handshake (2.5s settle) → LOG(size)+flag01 → raw reports →
+  ULEND → STP!#.
+- HANC handshake causes a visible display reset (fade black → re-init → boot logo), but
+  NO USB re-enumeration (HID path stable, verified by probe-handshake).
+- HYPOTHESES for black-after-ACK: (a) `LOG` writes the **boot logo to flash** (shown only
+  after power-cycle), and the *live* display uses a different path; (b) a **render/commit
+  or mode-switch** command is still missing; (c) pixel format/flag still wrong.
+- Probes added: probe-logo, probe-frame (bgr888/rgb888/rgb565le/rgb565be), probe-res-sweep,
+  probe-handshake, probe-read. Resolution sweep (squares) showed only brief flashes.
+- NEXT: power-cycle test (does a LOG upload appear as boot logo?); if LOG=boot-logo,
+  find the live-display path; strong candidate to settle remaining unknowns = a USB capture
+  of the official Windows app pushing one frame (Approach C).
+
+### 2026-06-01 — Task 7/9: Real command opcodes extracted from DLL
+
+Disassembled the SDDevice command builders (image base 0x180000000). Each builds a
+QByteArray initialized to zeros and only writes the non-zero command chars, so the
+`CRT\0\0` prefix is implicit (positions 3,4 left zero) — consistent with our working
+CMD_PREFIX. Opcodes (ASCII, after the `CRT\0\0` prefix unless noted):
+
+| Builder | RVA | Bytes (non-zero) | Interpreted command |
+|---------|-----|------------------|---------------------|
+| addHandshakePack | 0x184b0 | H A N C | `HANC` (NO CRT prefix; + a 15-len QString arg, maybe UUID/version) |
+| addWakeUpScreenPack | 0x1a270 | C R T D I S | `CRT..DIS` (wake) ✓ |
+| addFinishCommand | 0x18220 | C R T S T P ! # | `CRT..STP!#` (finish — note the `!#` = 0x21 0x23 suffix) |
+| getFinishCommand | 0x1d320 | C R T S T P ! # " | `CRT..STP!#"` (0x22 trailing) |
+| getUploadFinishedCommand | 0x1e6d0 | C R T U L E N D | `CRT..ULEND` (finalize upload) |
+| getClearAllCommand | 0x1cf90 | C R T C L E (x2) | `CRT..CLE` (clear) ✓ |
+| sendPicSizeCommand | 0x23f50 | C R T B A T + size(BE32) + index | `CRT..BAT` pic header ✓ |
+
+**Why the 480x480 image upload showed nothing:** our sequence sent `BAT`+data then a
+bare `STP` (no `!#`) and never sent `ULEND`. Correct upload sequence is:
+  wake → [handshake HANC] → BAT(size,index) → raw JPEG reports → **ULEND** → **STP!#**.
+
+TODO: confirm handshake necessity, exact STP suffix (`!#` vs `!#"`), index byte, resolution.
+
 ### 2026-06-01 — Task 6: Resolution (static analysis inconclusive → empirical)
 
 - Resolution is **not hardcoded** in `SDLibrary1.dll`. Disassembly of `getLogoSizeCommand`
